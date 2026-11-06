@@ -1,0 +1,9 @@
+[Unit]
+Description=WebManager: Process update request
+After=docker.service
+Requires=docker.service
+
+[Service]
+Type=oneshot
+ExecStart=@INSTALL_DIR@/scripts/update-helper.sh apply
+TimeoutStartSec=3h

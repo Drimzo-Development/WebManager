@@ -1,0 +1,9 @@
+[Unit]
+Description=WebManager: Backup request from the dashboard
+
+[Path]
+PathExists=@DATA_DIR@/backup-ctl/request
+Unit=webmanager-backupreq.service
+
+[Install]
+WantedBy=multi-user.target

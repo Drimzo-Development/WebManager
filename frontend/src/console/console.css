@@ -1,0 +1,21 @@
+html, body { height: 100%; margin: 0; overflow: hidden; background: #0f1115; color: #d7dae0; font: 14px/1.4 system-ui, -apple-system, "Segoe UI", sans-serif; }
+body { display: flex; flex-direction: column; }
+.bar { display: flex; align-items: center; gap: .75rem; padding: .5rem .75rem; border-bottom: 1px solid #262b34; background: #151922; flex: none; }
+.bar .spacer { flex: 1; }
+#status { font-size: .85rem; color: #9aa3b2; }
+#status[data-tone="ok"] { color: #3fb97c; }
+#status[data-tone="err"] { color: #e5534b; }
+button { height: 2rem; padding: 0 .9rem; border: 1px solid #343b49; border-radius: .4rem; background: #1d2330; color: inherit; font: inherit; cursor: pointer; }
+button:hover:not(:disabled) { background: #263045; }
+button:disabled { opacity: .55; cursor: default; }
+button:focus-visible { outline: 2px solid #5b8def; outline-offset: 2px; }
+#reauth { display: flex; flex-wrap: wrap; align-items: flex-end; gap: .75rem; padding: .75rem; border-bottom: 1px solid #262b34; background: #151922; flex: none; }
+#reauth p { margin: 0; flex-basis: 100%; color: #9aa3b2; font-size: .85rem; }
+#reauth label { display: grid; gap: .25rem; font-size: .8rem; color: #9aa3b2; }
+#reauth input { height: 2rem; padding: 0 .6rem; border: 1px solid #343b49; border-radius: .4rem; background: #0f1115; color: inherit; font: inherit; }
+#reauth input:focus-visible { outline: 2px solid #5b8def; outline-offset: 1px; }
+#re-msg { color: #e5534b; font-size: .85rem; min-height: 1.2em; }
+#term { flex: 1; min-height: 0; box-sizing: border-box; overflow: hidden; padding: .5rem .5rem .25rem .75rem; }
+#term .xterm { height: 100%; }
+#term .xterm-viewport { background-color: transparent !important; }
+[hidden] { display: none !important; }

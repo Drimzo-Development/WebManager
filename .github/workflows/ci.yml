@@ -1,0 +1,120 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  schedule:
+    # new vulnerabilities in base images appear without any commit: scan weekly (Monday morning)
+    - cron: '23 5 * * 1'
+
+permissions:
+  contents: read
+
+jobs:
+  node:
+    name: Agent, worker, interface
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7
+        with:
+          node-version: 24
+      - name: Agent
+        run: npm test
+        working-directory: agent
+      - name: Worker
+        working-directory: workers
+        run: |
+          npm ci
+          npm test
+      - name: Known vulnerabilities in runtime dependencies
+        run: |
+          (cd workers && npm audit --omit=dev --audit-level=high)
+          (cd frontend && npm audit --omit=dev --audit-level=high)
+      - name: Interface (type check, build, tests)
+        working-directory: frontend
+        run: |
+          npm ci
+          npm run build
+          npm test
+
+  php-und-shell:
+    name: PHP and shell tests
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+      - uses: shivammathur/setup-php@eb7c497e18156a6bbabfef1d3a82760b9eda3962 # v2
+        with:
+          php-version: '8.5'
+          extensions: mbstring, sodium, openssl, pdo_mysql
+      - name: PHP syntax
+        run: |
+          set -e
+          for f in $(git ls-files '*.php' bin/console); do php -l "$f" > /dev/null; done
+      - name: PHP tests
+        run: |
+          set -e
+          for t in tests/*.test.php; do echo "== $t"; php "$t"; done
+      - name: DNS hook tests
+        run: python3 -I tests/dns_hook.test.py
+      - name: Language files
+        # Broken files (format, placeholders) fail the build; texts of the interface without a
+        # translation, or entries no longer used, are shown as warnings (English is the fallback).
+        run: |
+          set -e
+          php scripts/i18n.php check
+          for f in lang/*.json; do
+            code=$(basename "$f" .json)
+            out=$(php scripts/i18n.php missing "$code")
+            n=$(printf '%s\n' "$out" | sed -n 's/^== not translated (\([0-9]*\))$/\1/p')
+            u=$(printf '%s\n' "$out" | sed -n 's/^== no longer used (\([0-9]*\))$/\1/p')
+            if [ "$n" != 0 ] || [ "$u" != 0 ]; then
+              echo "::warning file=$f::$n texts not translated, $u entries no longer used (php scripts/i18n.php sync $code)"
+              printf '%s\n' "$out"
+            else
+              echo "ok   $f: complete"
+            fi
+          done
+      - name: Shell syntax
+        run: |
+          set -e
+          for f in $(git ls-files '*.sh' scripts/webmanager); do bash -n "$f"; done
+      - name: Shell tests
+        run: |
+          set -e
+          for t in tests/*.test.sh; do
+            [ "$t" = tests/backup-remote-provider.test.sh ] && continue   # needs root
+            echo "== $t"; bash "$t"
+          done
+
+  version:
+    name: Version number
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+      - name: VERSION is a valid version and appears in the CHANGELOG
+        run: |
+          v="$(tr -d '[:space:]' < VERSION)"
+          [[ "$v" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]] || { echo "Invalid version: $v"; exit 1; }
+          grep -q "^## \[$v\]" CHANGELOG.md || { echo "CHANGELOG.md has no section for $v"; exit 1; }
+
+  images:
+    name: Container images (Trivy)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+      - name: Build the images of the stack
+        run: |
+          set -e
+          sed 's/__generated__/ci-placeholder/' .env.example > .env
+          docker compose build --pull
+      - name: Pull the third-party images (database, runtimes)
+        run: |
+          set -e
+          docker compose pull --quiet db
+          grep -oE '"image": "[^"]+"' templates/runtimes.json | cut -d'"' -f4 | grep -v '^drimzo/' | sort -u | xargs -n1 docker pull --quiet
+      - name: Scan for fixable HIGH/CRITICAL vulnerabilities
+        # The runtime images built by the installer on demand (drimzo/runtime-*, drimzo/tool-*) are not built here and are skipped.
+        # Findings in third-party images (database, Node.js, Adminer) are shown as warnings; the images of this tree must be clean.
+        run: bash scripts/security-scan.sh --warn-third-party

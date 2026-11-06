@@ -1,0 +1,21 @@
+name: Report a bug
+description: Something does not work as expected
+labels: [bug]
+body:
+  - type: input
+    id: version
+    attributes: { label: WebManager version, placeholder: "0.1.0" }
+    validations: { required: true }
+  - type: input
+    id: os
+    attributes: { label: Operating system, placeholder: "Debian 13" }
+  - type: textarea
+    id: what
+    attributes: { label: What happened, and what did you expect? }
+    validations: { required: true }
+  - type: textarea
+    id: logs
+    attributes:
+      label: Log
+      description: "Excerpt from /var/log/webmanager/ or `scripts/webmanager logs`. Please remove passwords and tokens."
+      render: text

@@ -1,0 +1,11 @@
+.env
+node_modules/
+*.log
+/backups/
+.idea/
+/dist/
+
+# Frontend build (created by the Docker build or with "npm run build" in frontend/)
+/public/assets/app/
+/public/assets/console/
+__pycache__/

@@ -1,0 +1,24 @@
+:root { color-scheme: light dark; --bg: #f3f5f8; --card: #fff; --fg: #1a2230; --muted: #6b7686; --line: #dfe3ea; --brand: #2f6fe4; --warn: #a86a00; --warn-bg: rgba(200, 130, 0, .13); --err: #c8332b; --err-bg: rgba(200, 51, 43, .10); --info: #2f6fe4; --info-bg: rgba(47, 111, 228, .10); }
+@media (prefers-color-scheme: dark) { :root { --bg: #14171c; --card: #1c2027; --fg: #e4e8ee; --muted: #818a99; --line: #2d343e; --brand: #5b8def; --warn: #e0a23c; --warn-bg: rgba(224, 162, 60, .15); --err: #e5534b; --err-bg: rgba(229, 83, 75, .15); --info: #5b8def; --info-bg: rgba(91, 141, 239, .14); } }
+* { box-sizing: border-box; }
+body { margin: 0; min-height: 100vh; display: grid; place-items: center; padding: 1.25rem; background: var(--bg); color: var(--fg); font: 15px/1.55 system-ui, -apple-system, "Segoe UI", Roboto, sans-serif; }
+.card { width: min(34rem, 100%); background: var(--card); border: 1px solid var(--line); border-top: 4px solid var(--c); border-radius: 8px; padding: 2rem 2rem 1.5rem; box-shadow: 0 1px 2px rgba(20, 30, 50, .12); }
+.warn { --c: var(--warn); --c-bg: var(--warn-bg); } .err { --c: var(--err); --c-bg: var(--err-bg); } .info { --c: var(--info); --c-bg: var(--info-bg); }
+.brand { display: flex; align-items: center; gap: .75rem; margin-bottom: 1.5rem; }
+.brand img { display: block; width: 3rem; height: 3rem; object-fit: contain; }
+.brand span { font-size: 1.15rem; font-weight: 600; letter-spacing: -.01em; }
+.top { display: flex; align-items: center; gap: .9rem; margin-bottom: 1.25rem; }
+.icon { display: grid; place-items: center; width: 3.4rem; height: 3.4rem; border-radius: 50%; background: var(--c-bg); color: var(--c); flex: none; }
+.code { margin: 0; font-size: .8rem; font-weight: 700; letter-spacing: .1em; text-transform: uppercase; color: var(--c); }
+h1 { margin: .1rem 0 0; font-size: 1.45rem; line-height: 1.25; }
+p { margin: 0 0 1rem; color: var(--muted); }
+ul { margin: 0 0 1.25rem; padding-left: 1.2rem; color: var(--muted); }
+li { margin-bottom: .35rem; }
+.actions { display: flex; gap: .6rem; flex-wrap: wrap; margin-bottom: 1.25rem; }
+.btn { display: inline-block; padding: .6rem 1.1rem; border-radius: 5px; background: var(--brand); color: #fff; font-weight: 600; text-decoration: none; }
+.btn:hover { filter: brightness(1.1); }
+.btn:focus-visible { outline: 2px solid var(--brand); outline-offset: 2px; }
+.foot { border-top: 1px solid var(--line); padding-top: 1rem; font-size: .8rem; color: var(--muted); }
+.foot p { margin: 0; font-size: inherit; }
+.foot a { color: inherit; }
+.heart { color: #e5484d; }

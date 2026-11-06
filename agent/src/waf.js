@@ -1,0 +1,115 @@
+'use strict';
+/**
+ * Pattern based web application firewall, evaluated by nginx itself (map + regular expressions).
+ * It inspects the request URL, the query string and the User-Agent - NOT request bodies - and is modelled on the
+ * attack classes of the OWASP Core Rule Set: SQL injection, cross-site scripting, path traversal / file inclusion,
+ * command injection, vulnerability scanners and probes for sensitive files.
+ * It is a first line of defence against automated attacks, not a replacement for patched applications.
+ *
+ * nginx note: inside quoted configuration strings only \" \\ \t \r \n are escapes; every other backslash sequence
+ * (\s \d \. ...) reaches the regex engine unchanged. The patterns below therefore avoid \t \r \n and a literal
+ * backslash (they use \x5c) and never contain double quotes (they use \x22).
+ */
+
+const CATEGORIES = ['sqli', 'xss', 'traversal', 'rce', 'probe', 'scanner'];
+const LABELS = {
+  sqli: 'SQL injection', xss: 'Cross-site scripting (XSS)', traversal: 'Path traversal and file inclusion', rce: 'Command injection',
+  probe: 'Access to sensitive files', scanner: 'Security scanners (user agent)',
+};
+
+// Two rules keep the matching time bounded, otherwise a single request could keep an nginx worker busy:
+//  - the repetitions are bounded (an unbounded `+` next to `[^&]{0,80}?` backtracks polynomially: seconds for 7,000 characters);
+//  - a comment is `/*` + characters other than `*` + `*/`. With `.{0,40}?` one `/**/**/**/…` could be split into comments in
+//    exponentially many ways (minutes for 100 repetitions).
+const SEP = '(?:\\s|\\+|%20|%09|%0a|%0d|/\\*[^*]{0,40}\\*/)';
+const WS = `${SEP}{1,40}`;
+const OPT = `${SEP}{0,40}`;
+const QUOTE = '(?:%27|\'|%22|\\x22)';
+const LP = '(?:\\(|%28)';
+// "start of a word" that also works for url-encoded separators (%20or%20): a plain \b would not see a boundary after the 0 of %20
+const BEF = '(?:^|[^a-z0-9%]|%[0-9a-f]{2})';
+
+/** Patterns applied to the request URI (path + query, as sent by the client). Order = priority. */
+const URI_PATTERNS = {
+  sqli: [
+    `union${WS}(?:all${WS}|distinct${WS})?select`,
+    `select${WS}[^&]{0,80}?${WS}from${WS}`,
+    `${QUOTE}${OPT}(?:or|and|xor|union|having)\\b`,
+    `${BEF}(?:or|and)${WS}${QUOTE}?\\d+${QUOTE}?${OPT}(?:=|%3d|<|>|%3c|%3e|like)${OPT}${QUOTE}?\\d+`,
+    `(?:sleep|benchmark|pg_sleep|extractvalue|updatexml|dbms_pipe\\.receive_message)${LP}`,
+    `information_schema|sqlite_master|pg_catalog|sysobjects|xp_cmdshell`,
+    `(?:;|%3b)${OPT}(?:drop|insert|update|delete|alter|truncate|exec|shutdown)${WS}(?:table|into|from|database|master|set)`,
+    `load_file${LP}|into${WS}(?:out|dump)file`,
+    `waitfor${WS}delay`,
+  ],
+  xss: [
+    `(?:<|%3c)${OPT}/?${OPT}(?:script|iframe|object|embed|svg|math|applet)\\b`,
+    `(?:<|%3c)[^>]{0,200}?\\bon[a-z]{3,20}${OPT}(?:=|%3d)`,
+    `(?:javascript|vbscript)${OPT}(?::|%3a)`,
+    `data${OPT}(?::|%3a)${OPT}text/html`,
+    `document(?:\\.|%2e)(?:cookie|location|write|domain)`,
+    `\\b(?:eval|atob|fromcharcode)${LP}`,
+  ],
+  traversal: [
+    `(?:\\.\\.|%2e%2e|\\.%2e|%2e\\.)(?:/|%2f|\\x5c|%5c)`,
+    `/etc/(?:passwd|shadow|hosts|group)|/proc/(?:self|version)|boot\\.ini|win\\.ini|windows/system32`,
+    `\\b(?:php|phar|expect|gopher|dict|zip|file)(?::|%3a)(?:/|%2f)(?:/|%2f)`,
+  ],
+  rce: [
+    `(?:\\$|%24)(?:\\{|%7b)${OPT}(?:jndi|env|sys|lower|upper)${OPT}(?::|%3a)`,
+    `/bin/(?:ba|z|da|k)?sh\\b|/usr/bin/(?:env|python[0-9.]*|perl|php)\\b|\\bcmd(?:\\.exe)?${WS}(?:/|%2f)c\\b|\\bpowershell\\b`,
+    `(?:;|%3b|\\||%7c|&&|%26%26|\\x60|%60)${OPT}(?:cat|ls|id|whoami|uname|wget|curl|nc|netcat|bash|sh|python[0-9.]*|perl|php|rm|chmod|ping)(?:${WS}|$)`,
+  ],
+  probe: [
+    `/\\.(?:env|git|svn|hg|bzr|htpasswd|htaccess|ds_store|aws|ssh|bash_history|npmrc|dockerenv)(?:$|[/?#]|%2f)`,
+    `/(?:wp-config\\.php|config\\.inc\\.php|configuration\\.php|settings\\.py|web\\.config|composer\\.(?:json|lock)|package(?:-lock)?\\.json|docker-compose\\.ya?ml)(?:$|\\?)`,
+    `/(?:phpinfo|shell|cmd|c99|r57|wso|adminer)\\.php|/(?:phpmyadmin|pma|myadmin)(?:/|$)|/vendor/phpunit/|/cgi-bin/|/boaform/`,
+    `/(?:backup|dump|database|db|site|www)\\.(?:sql|zip|tar|tar\\.gz|tgz|7z|rar|bak)(?:$|\\?)`,
+  ],
+};
+
+const UA_PATTERN = '(?:sqlmap|nikto|nmap|masscan|acunetix|nessus|openvas|wpscan|dirbuster|gobuster|feroxbuster|ffuf|wfuzz|havij|netsparker|zgrab|nuclei|arachni|w3af|skipfish|metasploit|hydra|jaeles)';
+
+/** Category of a request according to the same rules nginx uses (used by the tests and the status display). */
+function classify(uri, userAgent = '') {
+  for (const cat of Object.keys(URI_PATTERNS)) {
+    for (const p of URI_PATTERNS[cat]) if (new RegExp(p, 'i').test(uri)) return cat;
+  }
+  if (new RegExp(UA_PATTERN, 'i').test(userAgent)) return 'scanner';
+  return '';
+}
+
+const q = (s) => s.replace(/"/g, '\\"');
+
+/** Shared maps and the log format; per-website variables are defined in each vhost. */
+function renderRules() {
+  const lines = [
+    '# Generated by WebManager (WAF rules). Do not edit: changes are overwritten.',
+    'map $request_uri $wm_waf_c_uri {',
+    "    default '';",
+  ];
+  for (const cat of Object.keys(URI_PATTERNS)) lines.push(`    "~*(?:${q(URI_PATTERNS[cat].join('|'))})" ${cat};`);
+  lines.push('}');
+  lines.push('map $http_user_agent $wm_waf_c_ua {', "    default '';", `    "~*${q(UA_PATTERN)}" scanner;`, '}');
+  lines.push('map $wm_waf_c_uri $wm_waf_cat {', '    "" $wm_waf_c_ua;', '    default $wm_waf_c_uri;', '}');
+  lines.push(`log_format wm_waf '$remote_addr - [$time_local] "$host" "$request" $status $body_bytes_sent "WAF:$wm_waf_cat" rt=$request_time';`);
+  return `${lines.join('\n')}\n`;
+}
+
+/** Per-website variables: which categories are active, optional exempt path prefixes. Returns { block, varName }. */
+function renderSiteVars(name, categories, exempt) {
+  const v = name.replace(/-/g, '_');
+  const on = CATEGORIES.filter((c) => categories.includes(c));
+  let out = `map $wm_waf_cat $wm_waf_${v} {\n    default 0;\n${on.map((c) => `    ${c} 1;`).join('\n')}\n}\n`;
+  let hit = `wm_waf_${v}`;
+  if (exempt.length) {
+    out += `map $uri $wm_waf_ex_${v} {\n    default 0;\n${exempt.map((p) => `    "~^${q(p.replace(/[.+*?^$()[\]{}|\\]/g, (m) => (m === '\\' ? '\\x5c' : `\\${m}`)))}" 1;`).join('\n')}\n}\n`;
+    out += `map "$wm_waf_${v}$wm_waf_ex_${v}" $wm_waf_hit_${v} {\n    "10" 1;\n    default 0;\n}\n`;
+    hit = `wm_waf_hit_${v}`;
+  }
+  return { block: out, varName: hit };
+}
+
+const RULES_FILE = '00-waf.conf';
+
+module.exports = { CATEGORIES, LABELS, URI_PATTERNS, UA_PATTERN, classify, renderRules, renderSiteVars, RULES_FILE };

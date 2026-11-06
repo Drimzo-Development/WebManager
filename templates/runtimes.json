@@ -1,0 +1,172 @@
+{
+  "_comment": "Allowlist of runtime templates. Only these images can be used for websites. Pin by version tag; add a \"digest\" (sha256:...) to pin by content.",
+  "tools": {
+    "git": {
+      "image": "drimzo/tool-git:2.54.0-1",
+      "build": "tool-git",
+      "buildArgs": {
+        "BASE_IMAGE": "alpine/git:v2.54.0"
+      }
+    },
+    "certbot": {
+      "image": "drimzo/tool-certbot:5.9.0-1",
+      "build": "tool-certbot",
+      "buildArgs": {
+        "BASE_IMAGE": "certbot/certbot:v5.9.0"
+      }
+    }
+  },
+  "runtimes": {
+    "static": {
+      "label": "Nginx (statisch)",
+      "kind": "static",
+      "image": "drimzo/runtime-static:1.31.6-1",
+      "types": [
+        "static"
+      ],
+      "fixedPort": 8080,
+      "mountFiles": "/var/www/site",
+      "filesReadOnly": true,
+      "build": "static",
+      "buildArgs": {
+        "BASE_IMAGE": "nginxinc/nginx-unprivileged:1.31.7-alpine"
+      }
+    },
+    "php-8.3": {
+      "label": "PHP 8.3 (FPM + Nginx, Composer, Node/npm)",
+      "kind": "php",
+      "image": "drimzo/runtime-php:8.3.36-1",
+      "build": "php",
+      "types": [
+        "php",
+        "laravel"
+      ],
+      "fixedPort": 8080,
+      "mountFiles": "/var/www/site",
+      "filesReadOnly": false,
+      "npm": true,
+      "buildArgs": {
+        "PHP_IMAGE": "php:8.3.36-fpm-alpine3.24"
+      }
+    },
+    "php-8.4": {
+      "label": "PHP 8.4 (FPM + Nginx, Composer, Node/npm)",
+      "kind": "php",
+      "image": "drimzo/runtime-php:8.4.27-1",
+      "build": "php",
+      "types": [
+        "php",
+        "laravel"
+      ],
+      "fixedPort": 8080,
+      "mountFiles": "/var/www/site",
+      "filesReadOnly": false,
+      "npm": true,
+      "buildArgs": {
+        "PHP_IMAGE": "php:8.4.27-fpm-alpine3.24"
+      }
+    },
+    "php-8.5": {
+      "label": "PHP 8.5 (FPM + Nginx, Composer, Node/npm)",
+      "kind": "php",
+      "image": "drimzo/runtime-php:8.5.12-1",
+      "build": "php",
+      "types": [
+        "php",
+        "laravel"
+      ],
+      "fixedPort": 8080,
+      "mountFiles": "/var/www/site",
+      "filesReadOnly": false,
+      "npm": true,
+      "buildArgs": {
+        "PHP_IMAGE": "php:8.5.12-fpm-alpine3.24"
+      }
+    },
+    "node-22": {
+      "label": "Node.js 22 LTS",
+      "kind": "node",
+      "image": "node:22.23.4-alpine3.24",
+      "types": [
+        "node",
+        "express",
+        "next",
+        "custom"
+      ],
+      "mountFiles": "/app",
+      "workdir": "/app",
+      "health": "node -e \"require('net').connect({{PORT}},'127.0.0.1').on('connect',()=>process.exit(0)).on('error',()=>process.exit(1))\"",
+      "npm": true
+    },
+    "node-24": {
+      "label": "Node.js 24 LTS",
+      "kind": "node",
+      "image": "node:24.22.2-alpine3.24",
+      "types": [
+        "node",
+        "express",
+        "next",
+        "custom"
+      ],
+      "mountFiles": "/app",
+      "workdir": "/app",
+      "health": "node -e \"require('net').connect({{PORT}},'127.0.0.1').on('connect',()=>process.exit(0)).on('error',()=>process.exit(1))\"",
+      "npm": true
+    },
+    "node-20": {
+      "label": "Node.js 20 (end of support – please switch to 22/24)",
+      "kind": "node",
+      "image": "node:20.20.2-alpine3.23",
+      "types": [
+        "node",
+        "express",
+        "next",
+        "custom"
+      ],
+      "mountFiles": "/app",
+      "workdir": "/app",
+      "health": "node -e \"require('net').connect({{PORT}},'127.0.0.1').on('connect',()=>process.exit(0)).on('error',()=>process.exit(1))\"",
+      "npm": true
+    },
+    "python-3.12": {
+      "label": "Python 3.12 (custom)",
+      "kind": "generic",
+      "image": "python:3.12.15-alpine3.24",
+      "types": [
+        "custom"
+      ],
+      "mountFiles": "/app",
+      "workdir": "/app",
+      "health": "python -c \"import socket,sys; s=socket.socket(); s.settimeout(3); sys.exit(s.connect_ex(('127.0.0.1',{{PORT}})))\""
+    },
+    "uptime-kuma": {
+      "label": "Uptime Kuma 2 (official image)",
+      "kind": "generic",
+      "image": "louislam/uptime-kuma:2.5.9-slim",
+      "types": [
+        "custom"
+      ],
+      "templateOnly": true,
+      "mountFiles": "/app/data",
+      "workdir": "/app",
+      "health": "node -e \"require('net').connect({{PORT}},'127.0.0.1').on('connect',()=>process.exit(0)).on('error',()=>process.exit(1))\""
+    }
+  },
+  "databases": {
+    "mariadb": {
+      "label": "MariaDB 11.4",
+      "image": "mariadb:11.4.13",
+      "port": 3306
+    },
+    "postgres": {
+      "label": "PostgreSQL 17",
+      "image": "postgres:17.11-alpine",
+      "port": 5432
+    }
+  },
+  "dbadmin": {
+    "label": "Adminer 5.5 (MariaDB/MySQL and PostgreSQL)",
+    "image": "adminer:5.5.1",
+    "port": 8080
+  }
+}

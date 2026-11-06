@@ -1,0 +1,98 @@
+name: Release
+
+# A pushed tag such as 0.1.0 builds the archive and publishes the GitHub release.
+# WebManager installations check for new releases every 2 hours (tag = version number).
+on:
+  push:
+    tags: ['[0-9]+.[0-9]+.[0-9]+']
+
+permissions:
+  contents: write
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+
+      - name: Tag and VERSION must match
+        run: |
+          v="$(tr -d '[:space:]' < VERSION)"
+          [ "$v" = "${GITHUB_REF_NAME}" ] || { echo "Tag ${GITHUB_REF_NAME} does not match VERSION ($v)"; exit 1; }
+
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7
+        with:
+          node-version: 24
+      - name: Agent and worker tests
+        run: |
+          (cd agent && npm test)
+          (cd workers && npm ci && npm test)
+
+      # Secrets: RELEASE_GPG_PRIVATE_KEY (armored private key), optional RELEASE_GPG_PASSPHRASE.
+      # The matching public key is keys/release.asc; installations verify every update against it.
+      - name: Import the signing key
+        env:
+          RELEASE_GPG_PRIVATE_KEY: ${{ secrets.RELEASE_GPG_PRIVATE_KEY }}
+          RELEASE_GPG_PASSPHRASE: ${{ secrets.RELEASE_GPG_PASSPHRASE }}
+        run: |
+          [ -n "$RELEASE_GPG_PRIVATE_KEY" ] || { echo "Secret RELEASE_GPG_PRIVATE_KEY is missing: unsigned releases are not published"; exit 1; }
+          export GNUPGHOME="$RUNNER_TEMP/gnupg"; mkdir -m 700 "$GNUPGHOME"
+          echo "GNUPGHOME=$GNUPGHOME" >> "$GITHUB_ENV"
+          printf '%s\n' "$RELEASE_GPG_PRIVATE_KEY" | gpg --batch --import
+          echo "allow-loopback-pinentry" > "$GNUPGHOME/gpg-agent.conf"
+          printf '%s' "$RELEASE_GPG_PASSPHRASE" > "$GNUPGHOME/pass"
+          echo "SIGN_PASSFILE=$GNUPGHOME/pass" >> "$GITHUB_ENV"
+          fpr="$(gpg --batch --list-secret-keys --with-colons | awk -F: '$1=="fpr"{print $10; exit}')"
+          echo "SIGN_KEY=$fpr" >> "$GITHUB_ENV"
+          pub="$(gpg --batch --show-keys --with-colons keys/release.asc | awk -F: '$1=="fpr"{print $10; exit}')"
+          [ "$pub" = "$fpr" ] || { echo "keys/release.asc ($pub) does not match the signing key ($fpr)"; exit 1; }
+
+      - name: Build and sign the archive
+        run: bash scripts/make-release.sh --out dist --sign "$SIGN_KEY"
+
+      - name: Release notes from the CHANGELOG
+        run: |
+          # plain string comparison: a regular expression would treat "[0.1.0]" as a character class and the dots as wildcards
+          awk -v v="${GITHUB_REF_NAME}" '
+            index($0, "## [" v "]") == 1 { on=1; next }
+            on && /^## \[/ { exit }
+            on { print }
+          ' CHANGELOG.md > notes.md
+          [ -s notes.md ] || echo "WebManager ${GITHUB_REF_NAME}" > notes.md
+          # fixed footer: how to get this version (updates come from the update server, not from this page)
+          cat >> notes.md <<'EOF'
+
+          ---
+
+          ## Update
+
+          Installed servers pick this version up on their own within 2 hours (**System & settings → Updates → Update now**). On the server:
+
+          ```bash
+          sudo /opt/webmanager/update.sh
+          ```
+
+          Updates are downloaded from `https://updates.drimzo.cc/webmanager/stable` and verified with SHA-256 and the GPG signature before they are installed; if anything fails, the previous state is restored automatically.
+
+          ## New installation
+
+          ```bash
+          BASE="https://updates.drimzo.cc/webmanager/stable"
+          curl -fsSLO "$BASE/webmanager-VERSION_PLACEHOLDER.tar.gz"
+          curl -fsSLO "$BASE/webmanager-VERSION_PLACEHOLDER.tar.gz.sha256"
+          curl -fsSLO "$BASE/webmanager-VERSION_PLACEHOLDER.tar.gz.asc"
+          ```
+
+          Verify checksum and signature and install as described in the [README](https://github.com/Drimzo-Development/WebManager#installation).
+          EOF
+          sed -i "s/VERSION_PLACEHOLDER/${GITHUB_REF_NAME}/g" notes.md
+
+      - name: Create the GitHub release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh release create "${GITHUB_REF_NAME}" \
+            "dist/webmanager-${GITHUB_REF_NAME}.tar.gz" \
+            "dist/webmanager-${GITHUB_REF_NAME}.tar.gz.sha256" \
+            "dist/webmanager-${GITHUB_REF_NAME}.tar.gz.asc" \
+            --title "${GITHUB_REF_NAME}" --notes-file notes.md --verify-tag

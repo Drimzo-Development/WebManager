@@ -1,0 +1,135 @@
+{
+  "_comment": "Application templates for “New website → Start from”. The catalog describes what the form offers; the installation steps are fixed code in workers/src/apps.js (an id must exist in both). Only https downloads of the vendor, verified with the vendor's published checksum.",
+  "apps": {
+    "wordpress": {
+      "label": "WordPress",
+      "description": "Blog and website system. Creates a PHP website with its own MariaDB database, downloads WordPress (checksum verified) and writes a wp-config.php that reads the database settings from the environment. You finish the setup in the browser.",
+      "type": "php",
+      "runtimePreference": [
+        "php-8.4",
+        "php-8.3",
+        "php-8.5"
+      ],
+      "database": "mariadb",
+      "memory_mb": 512,
+      "db_memory_mb": 512,
+      "after": "Open the website and complete the WordPress installation (language, site title, administrator account)."
+    },
+    "joomla": {
+      "label": "Joomla",
+      "description": "Content management system. Creates a PHP website with its own MariaDB database and downloads Joomla (checksum verified against the digest of the release). You finish the setup in the browser.",
+      "type": "php",
+      "runtimePreference": [
+        "php-8.4",
+        "php-8.3",
+        "php-8.5"
+      ],
+      "database": "mariadb",
+      "memory_mb": 512,
+      "db_memory_mb": 512,
+      "nginxRules": [
+        "location ~ ^/(?:administrator/)?(?:logs|cache)/ { deny all; }",
+        "location ~ ^/(?:cli|tmp|libraries)/ { deny all; }"
+      ],
+      "after": "Open the website and complete the Joomla installation. Use the values from the website's Database tab in the installer (host, database, user and the password, which you can show there). Remove the installation folder when the installer asks for it."
+    },
+    "nextcloud": {
+      "label": "Nextcloud",
+      "description": "File sync and collaboration. Creates a PHP website with its own MariaDB database, downloads Nextcloud (checksum verified) and prepares the installer so that it reads the database settings from the environment. The data directory lies outside the web root.",
+      "type": "php",
+      "runtimePreference": [
+        "php-8.4",
+        "php-8.3",
+        "php-8.5"
+      ],
+      "database": "mariadb",
+      "memory_mb": 1024,
+      "db_memory_mb": 512,
+      "docroot": "nextcloud",
+      "nginxRules": [
+        "location ~ ^/(?:build|tests|config|lib|3rdparty|templates|data)(?:$|/) { return 404; }",
+        "location ~ ^/(?:autotest|occ|issue|indie|db_|console) { return 404; }",
+        "location ~ ^/(?:index|remote|public|cron|status|ocs/v[12]|ocm-provider/.+|ocs-provider/.+)\\.php(?:$|/) {",
+        "    fastcgi_split_path_info ^(.+?\\.php)(/.*)$;",
+        "    try_files $fastcgi_script_name =404;",
+        "    fastcgi_pass 127.0.0.1:9000;",
+        "    fastcgi_read_timeout 300s;",
+        "    fastcgi_request_buffering off;",
+        "    fastcgi_param SCRIPT_FILENAME $document_root$fastcgi_script_name;",
+        "    fastcgi_param PATH_INFO $fastcgi_path_info;",
+        "    fastcgi_param QUERY_STRING $query_string;",
+        "    fastcgi_param REQUEST_METHOD $request_method;",
+        "    fastcgi_param CONTENT_TYPE $content_type;",
+        "    fastcgi_param CONTENT_LENGTH $content_length;",
+        "    fastcgi_param SCRIPT_NAME $fastcgi_script_name;",
+        "    fastcgi_param REQUEST_URI $request_uri;",
+        "    fastcgi_param DOCUMENT_URI $document_uri;",
+        "    fastcgi_param DOCUMENT_ROOT $document_root;",
+        "    fastcgi_param SERVER_PROTOCOL $server_protocol;",
+        "    fastcgi_param REQUEST_SCHEME $http_x_forwarded_proto;",
+        "    fastcgi_param HTTPS $wm_https;",
+        "    fastcgi_param GATEWAY_INTERFACE CGI/1.1;",
+        "    fastcgi_param REMOTE_ADDR $http_x_real_ip;",
+        "    fastcgi_param REMOTE_PORT $remote_port;",
+        "    fastcgi_param SERVER_ADDR $server_addr;",
+        "    fastcgi_param SERVER_PORT $server_port;",
+        "    fastcgi_param SERVER_NAME $host;",
+        "    fastcgi_param REDIRECT_STATUS 200;",
+        "}"
+      ],
+      "after": "Open the website, choose an administrator account and finish the installation right away (the database is already filled in). Large uploads need a higher limit under PHP settings."
+    },
+    "matomo": {
+      "label": "Matomo",
+      "description": "Web analytics. Creates a PHP website with its own MariaDB database and downloads Matomo (checksum verified against the digest of the release). You finish the setup in the browser.",
+      "type": "php",
+      "runtimePreference": [
+        "php-8.4",
+        "php-8.3",
+        "php-8.5"
+      ],
+      "database": "mariadb",
+      "memory_mb": 512,
+      "db_memory_mb": 512,
+      "nginxRules": [
+        "location ~ ^/(?:config|tmp|core|lang)(?:$|/) { deny all; }",
+        "location ~ ^/(?:libs|vendor|plugins|node_modules|misc)/.*\\.(?:php|inc|ini|lock|log|md|sql|yml|yaml|tpl|twig)$ { deny all; }"
+      ],
+      "after": "Open the website and complete the Matomo installation. Use the values from the website's Database tab in the installer (host, database, user and the password, which you can show there)."
+    },
+    "grav": {
+      "label": "Grav",
+      "description": "Flat-file CMS with the admin plugin: no database. Downloads Grav (checksum verified against the digest of the release). Pages are plain files you can edit in the file manager.",
+      "type": "php",
+      "runtimePreference": [
+        "php-8.4",
+        "php-8.3",
+        "php-8.5"
+      ],
+      "memory_mb": 256,
+      "nginxRules": [
+        "location ~ ^/(?:cache|bin|logs|backup|webserver-configs|tests)(?:$|/) { deny all; }",
+        "location ~ ^/(?:system|vendor)/.*\\.(?:txt|xml|md|html|htm|shtml|json|yaml|yml|php|phar|phtml|sh|bat)$ { deny all; }",
+        "location ~ ^/user/.*\\.(?:txt|md|json|yaml|yml|php|phar|twig|sh|bat)$ { deny all; }",
+        "location ~ ^/(?:LICENSE\\.txt|composer\\.json|composer\\.lock|nginx\\.conf|web\\.config|htaccess\\.txt)$ { deny all; }"
+      ],
+      "after": "Open the website and create the administrator account right away – the first visitor can do it."
+    },
+    "uptime-kuma": {
+      "label": "Uptime Kuma",
+      "description": "Self-hosted monitoring with a status page. Runs the official Uptime Kuma image (pinned version, nothing is downloaded at setup); its data (SQLite database, settings) lives in the file manager of the website under data.",
+      "type": "custom",
+      "runtimePreference": [
+        "uptime-kuma"
+      ],
+      "startCommand": "node server/server.js",
+      "internalPort": 3001,
+      "env": {
+        "UPTIME_KUMA_HOST": "0.0.0.0",
+        "UPTIME_KUMA_PORT": "3001"
+      },
+      "memory_mb": 512,
+      "after": "Open the website and create the administrator account right away – the first visitor can do it. Choose SQLite as the database in the setup."
+    }
+  }
+}

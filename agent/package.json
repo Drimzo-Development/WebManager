@@ -1,0 +1,13 @@
+{
+  "name": "webmanager-agent",
+  "version": "0.1.0",
+  "description": "Privileged docker management agent with a strict, validated action set",
+  "private": true,
+  "license": "Elastic-2.0",
+  "main": "src/server.js",
+  "scripts": {
+    "start": "node src/server.js",
+    "test": "node --test test/*.test.js"
+  },
+  "engines": { "node": ">=20" }
+}

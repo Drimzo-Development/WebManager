@@ -1,0 +1,21 @@
+# Development override:  docker compose -f docker-compose.yml -f docker-compose.dev.yml up --build
+# Mounts the PHP sources, exposes the dashboard directly and enables error display.
+# Never use this file on a production server.
+services:
+  webmanager:
+    read_only: false
+    environment:
+      # development only: the production compose file never passes this variable on
+    volumes:
+      - ./app:/srv/webmanager/app:ro
+      - ./public:/srv/webmanager/public:ro
+      - ./bin:/srv/webmanager/bin:ro
+      - ./database:/srv/webmanager/database:ro
+      - ./templates:/srv/webmanager/templates:ro
+      - ./docker/webmanager/php.dev.ini:/usr/local/etc/php/conf.d/zz-dev.ini:ro
+    ports:
+      - "127.0.0.1:8080:8080"
+  proxy:
+    ports: !override
+      - "127.0.0.1:${HTTP_PORT:-8000}:80"
+      - "127.0.0.1:${HTTPS_PORT:-8443}:443"

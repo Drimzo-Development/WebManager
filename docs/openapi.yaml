@@ -1,0 +1,255 @@
+openapi: 3.1.0
+info:
+  title: WebManager API
+  version: "0.1.0"
+  description: |
+    Stable interface under `/api/v1`. It is an allowlist: what is not listed here does not exist.
+    Roles and mandatory 2FA apply exactly as in the dashboard.
+
+    **Authentication.** Either a personal API token (`Authorization: Bearer wmt_…`) or the dashboard session
+    (cookie, plus `X-CSRF-Token` for changes). Create tokens under *My account*; they are shown only once,
+    expire after 365 days at the latest, can be restricted to IP addresses and never have more rights than their owner.
+    Tokens cannot be created or changed through the API.
+
+    **Errors.** Always JSON: `{"error": "message"}` with the matching HTTP status (401 not signed in/token invalid,
+    403 no permission, 404, 409, 422, 429).
+servers:
+  - url: /
+security:
+  - bearerToken: []
+  - sessionCookie: []
+paths:
+  /api/v1/me:
+    get:
+      summary: Who is calling?
+      description: User, role, sign-in method and brand. `csrf` is only set for sessions.
+      operationId: getMe
+      responses:
+        "200":
+          description: Aktueller Aufrufer
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Me" }
+        "401": { $ref: "#/components/responses/Error" }
+  /api/v1/metrics:
+    get:
+      summary: Metrics in the Prometheus text format (viewer or higher)
+      description: Resources, restarts, disk space, certificate expiry and availability of all websites for Prometheus, Grafana and Alertmanager. Scrape it with a viewer token (`authorization: credentials` in the scrape configuration).
+      operationId: getMetrics
+      responses:
+        "200":
+          description: Prometheus text exposition format (version 0.0.4)
+          content:
+            text/plain: { schema: { type: string } }
+        "401": { $ref: "#/components/responses/Error" }
+  /api/v1/sites:
+    get:
+      summary: All websites visible to the caller, with status
+      operationId: listSites
+      responses:
+        "200":
+          description: Websites
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  sites: { type: array, items: { $ref: "#/components/schemas/SiteSummary" } }
+                  agent_error: { type: [string, "null"], description: "Set when the container status could not be retrieved." }
+        "401": { $ref: "#/components/responses/Error" }
+  /api/v1/sites/{id}:
+    get:
+      summary: One website with details
+      operationId: getSite
+      parameters: [{ $ref: "#/components/parameters/SiteId" }]
+      responses:
+        "200":
+          description: Website, domains, container status, certificate
+          content:
+            application/json:
+              schema: { type: object, additionalProperties: true }
+        "404": { $ref: "#/components/responses/Error" }
+  /api/v1/sites/{id}/status:
+    get:
+      summary: Container status and load
+      operationId: getSiteStatus
+      parameters: [{ $ref: "#/components/parameters/SiteId" }]
+      responses:
+        "200": { description: Status, content: { application/json: { schema: { type: object, additionalProperties: true } } } }
+        "404": { $ref: "#/components/responses/Error" }
+  /api/v1/sites/{id}/logs:
+    get:
+      summary: Logs (operator or higher)
+      operationId: getSiteLogs
+      parameters:
+        - { $ref: "#/components/parameters/SiteId" }
+        - { name: source, in: query, schema: { type: string, enum: [container, access, error], default: container } }
+        - { name: tail, in: query, schema: { type: integer, minimum: 1, maximum: 2000, default: 200 } }
+      responses:
+        "200": { description: Logzeilen, content: { application/json: { schema: { type: object, additionalProperties: true } } } }
+        "403": { $ref: "#/components/responses/Error" }
+  /api/v1/sites/{id}/metrics:
+    get:
+      summary: History values (operator or higher)
+      operationId: getSiteMetrics
+      parameters: [{ $ref: "#/components/parameters/SiteId" }]
+      responses:
+        "200": { description: Messwerte, content: { application/json: { schema: { type: object, additionalProperties: true } } } }
+        "403": { $ref: "#/components/responses/Error" }
+  /api/v1/sites/{id}/uptime:
+    get:
+      summary: Availability (HTTP checks, one per minute; viewer or higher)
+      description: Share of successful checks for 24 hours, 7 and 14 days, half-hour buckets of the last 24 hours, day buckets of the last 14 days and the latest failed checks.
+      operationId: getSiteUptime
+      parameters: [{ $ref: "#/components/parameters/SiteId" }]
+      responses:
+        "200": { description: Availability, content: { application/json: { schema: { type: object, additionalProperties: true } } } }
+        "403": { $ref: "#/components/responses/Error" }
+  /api/v1/sites/{id}/resources:
+    get:
+      summary: Resource limits, current use, restarts and daily disk space (viewer or higher)
+      description: Memory, CPU and process limits, the current CPU/memory use, the restart counter and whether the last stop was caused by memory exhaustion, and the disk space of the last 30 days (one value per day).
+      operationId: getSiteResources
+      parameters: [{ $ref: "#/components/parameters/SiteId" }]
+      responses:
+        "200": { description: Resources, content: { application/json: { schema: { type: object, additionalProperties: true } } } }
+        "403": { $ref: "#/components/responses/Error" }
+  /api/v1/sites/{id}/jobs:
+    get:
+      summary: Tasks of this website
+      operationId: getSiteJobs
+      parameters: [{ $ref: "#/components/parameters/SiteId" }]
+      responses:
+        "200": { description: Tasks, content: { application/json: { schema: { type: object, additionalProperties: true } } } }
+  /api/v1/sites/{id}/action:
+    post:
+      summary: Start, stop, restart or update the container
+      description: Runs asynchronously; the answer contains the task whose progress is queried under `/api/v1/jobs/{id}`. Operator or higher.
+      operationId: siteAction
+      parameters: [{ $ref: "#/components/parameters/SiteId" }]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [action]
+              properties:
+                action: { type: string, enum: [start, stop, restart, apply] }
+      responses:
+        "200":
+          description: Task created
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  job: { $ref: "#/components/schemas/Job" }
+        "409": { $ref: "#/components/responses/Error" }
+        "422": { $ref: "#/components/responses/Error" }
+  /api/v1/jobs:
+    get:
+      summary: Latest tasks
+      operationId: listJobs
+      parameters:
+        - { name: limit, in: query, schema: { type: integer, default: 50 } }
+      responses:
+        "200":
+          description: Tasks
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  jobs: { type: array, items: { $ref: "#/components/schemas/Job" } }
+  /api/v1/jobs/{id}:
+    get:
+      summary: One task
+      operationId: getJob
+      parameters: [{ $ref: "#/components/parameters/JobId" }]
+      responses:
+        "200":
+          description: Task
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  job: { $ref: "#/components/schemas/Job" }
+        "404": { $ref: "#/components/responses/Error" }
+  /api/v1/jobs/{id}/logs:
+    get:
+      summary: Log lines of a task (polling with `after`)
+      operationId: getJobLogs
+      parameters:
+        - { $ref: "#/components/parameters/JobId" }
+        - { name: after, in: query, schema: { type: integer, default: 0 }, description: "Only lines after this number" }
+      responses:
+        "200": { description: Lines and current state of the task, content: { application/json: { schema: { type: object, additionalProperties: true } } } }
+  /api/v1/jobs/{id}/cancel:
+    post:
+      summary: Cancel a task
+      operationId: cancelJob
+      parameters: [{ $ref: "#/components/parameters/JobId" }]
+      responses:
+        "200": { description: Result, content: { application/json: { schema: { type: object, properties: { status: { type: string } } } } } }
+components:
+  securitySchemes:
+    bearerToken: { type: http, scheme: bearer, bearerFormat: "wmt_<prefix>_<secret>" }
+    sessionCookie: { type: apiKey, in: cookie, name: wm_sid }
+  parameters:
+    SiteId: { name: id, in: path, required: true, schema: { type: integer, minimum: 1 } }
+    JobId: { name: id, in: path, required: true, schema: { type: integer, minimum: 1 } }
+  responses:
+    Error:
+      description: Error
+      content:
+        application/json:
+          schema:
+            type: object
+            required: [error]
+            properties:
+              error: { type: string }
+  schemas:
+    Role: { type: string, enum: [viewer, operator, admin] }
+    Me:
+      type: object
+      properties:
+        user:
+          type: object
+          properties:
+            id: { type: integer }
+            email: { type: string }
+            name: { type: string }
+            role: { $ref: "#/components/schemas/Role" }
+        auth: { type: string, enum: [session, token] }
+        csrf: { type: [string, "null"] }
+        two_factor_missing: { type: boolean }
+        brand: { type: object, properties: { name: { type: string }, product: { type: string } } }
+        version: { type: string }
+    SiteSummary:
+      type: object
+      additionalProperties: true
+      properties:
+        id: { type: integer }
+        name: { type: string }
+        domains: { type: array, items: { type: string } }
+        state: { type: string, description: "running, stopped, crashed, starting, unhealthy, creating, deleting, missing, unknown" }
+        cert_status: { type: string }
+        cert_not_after: { type: [string, "null"] }
+        busy: { type: boolean }
+        stats: { type: [object, "null"], additionalProperties: true }
+    Job:
+      type: object
+      additionalProperties: true
+      properties:
+        id: { type: integer }
+        type: { type: string }
+        site_id: { type: [integer, "null"] }
+        title: { type: string }
+        status: { type: string }
+        exit_code: { type: [integer, "null"] }
+        error: { type: [string, "null"] }
+        created_at: { type: string }
+        started_at: { type: [string, "null"] }
+        finished_at: { type: [string, "null"] }

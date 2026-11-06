@@ -1,0 +1,9 @@
+[Unit]
+Description=Hourly check whether an automatic patch update is due
+
+[Timer]
+OnCalendar=*-*-* *:07:00
+RandomizedDelaySec=5min
+
+[Install]
+WantedBy=timers.target

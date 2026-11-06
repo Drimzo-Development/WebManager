@@ -1,0 +1,9 @@
+[Unit]
+Description=WebManager: Update request from the dashboard
+
+[Path]
+PathExists=@DATA_DIR@/update/request
+Unit=webmanager-update.service
+
+[Install]
+WantedBy=multi-user.target

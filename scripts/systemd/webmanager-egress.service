@@ -1,0 +1,14 @@
+[Unit]
+Description=WebManager: websites may not reach the Docker host (egress guard)
+After=docker.service
+Requires=docker.service
+PartOf=docker.service
+
+[Service]
+Type=oneshot
+RemainAfterExit=yes
+ExecStart=@INSTALL_DIR@/scripts/egress-guard.sh apply
+ExecStop=@INSTALL_DIR@/scripts/egress-guard.sh remove
+
+[Install]
+WantedBy=multi-user.target

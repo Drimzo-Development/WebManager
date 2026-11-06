@@ -1,0 +1,63 @@
+#!/usr/bin/env bash
+# Convenience CLI for administrators on the server.
+#   sudo /opt/webmanager/scripts/webmanager status
+set -Eeuo pipefail
+IFS=$'\n\t'
+
+SELF="$(readlink -f -- "${BASH_SOURCE[0]}")"
+INSTALL_DIR="${WM_INSTALL_DIR:-$(dirname -- "$(dirname -- "$SELF")")}"
+# shellcheck source=lib.sh
+source "$INSTALL_DIR/scripts/lib.sh"
+[[ -f "$INSTALL_DIR/.env" ]] || die "No installation found in $INSTALL_DIR (.env is missing)."
+require_root
+
+usage() {
+  cat <<'EOF'
+Usage: webmanager <command>
+
+  status                         state of all services
+  logs [service]                  show logs (db, agent, worker, webmanager, proxy)
+  admin:create <e-mail>          create an administrator (password is asked for / read from stdin)
+  admin:reset-password <e-mail>  reset the password of an administrator
+  reconcile                      reconcile websites, containers and proxy routes with the database
+  renew-certificates             check and renew certificates
+  restart                        restart all services (websites stay untouched)
+  console <args>                 run the PHP console (bin/console)
+EOF
+}
+
+cmd="${1:-help}"; shift || true
+case "$cmd" in
+  status)
+    for s in db agent worker webmanager proxy; do printf '%-12s %s\n' "$s" "$(service_status "$s")"; done
+    echo; docker ps --filter 'label=drimzo.managed=true' --format 'table {{.Names}}\t{{.Status}}\t{{.Image}}' || true
+    ;;
+  logs)
+    compose logs --tail=200 -f "${@}"
+    ;;
+  admin:create|admin:reset-password)
+    email="${1:?Specify the email address}"
+    if [[ -t 0 ]]; then
+      read -r -s -p "Password: " pw; echo
+      read -r -s -p "Repeat: " pw2; echo
+      [[ "$pw" == "$pw2" ]] || die "Passwords do not match."
+    else
+      pw="$(cat)"
+    fi
+    printf '%s' "$pw" | compose exec -T webmanager php bin/console "$cmd" "$email"
+    ;;
+  reconcile)
+    compose exec -T webmanager php bin/console job:enqueue system.reconcile
+    ;;
+  renew-certificates)
+    compose exec -T webmanager php bin/console job:enqueue certs.renew
+    ;;
+  restart)
+    compose restart
+    ;;
+  console)
+    compose exec -T webmanager php bin/console "$@"
+    ;;
+  help|-h|--help) usage ;;
+  *) usage >&2; exit 1 ;;
+esac

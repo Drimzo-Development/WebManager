@@ -1,0 +1,11 @@
+[Unit]
+Description=WebManager: Process backup request
+After=docker.service
+Requires=docker.service
+
+[Service]
+Type=oneshot
+ExecStart=@INSTALL_DIR@/scripts/backup-remote.sh apply
+TimeoutStartSec=6h
+Nice=10
+IOSchedulingClass=idle

@@ -1,0 +1,39 @@
+version: 2
+updates:
+  # Node dependencies of the worker and the interface
+  - package-ecosystem: npm
+    directory: /workers
+    schedule: { interval: weekly }
+    open-pull-requests-limit: 5
+    groups:
+      worker-minor-patch: { update-types: [minor, patch] }
+  - package-ecosystem: npm
+    directory: /frontend
+    schedule: { interval: weekly }
+    open-pull-requests-limit: 5
+    groups:
+      frontend-minor-patch: { update-types: [minor, patch] }
+    ignore:
+      # @preact/preset-vite only supports Babel 7 (peer dependency "7.x")
+      - dependency-name: "@babel/core"
+        update-types: ["version-update:semver-major"]
+
+  # Actions used by the CI and release workflows
+  - package-ecosystem: github-actions
+    directory: /
+    schedule: { interval: monthly }
+
+  # Base images of the stack. Runtime images are pinned in templates/runtimes.json and
+  # have to be updated there together with their Dockerfile, so review these PRs carefully.
+  - package-ecosystem: docker
+    directory: /docker/agent
+    schedule: { interval: weekly }
+  - package-ecosystem: docker
+    directory: /docker/worker
+    schedule: { interval: weekly }
+  - package-ecosystem: docker
+    directory: /docker/proxy
+    schedule: { interval: weekly }
+  - package-ecosystem: docker
+    directory: /docker/webmanager
+    schedule: { interval: weekly }

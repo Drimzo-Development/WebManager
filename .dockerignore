@@ -1,0 +1,13 @@
+.git
+.env
+.env.*
+!.env.example
+node_modules
+**/node_modules
+tests
+docs
+*.md
+backups
+public/assets/app
+public/assets/console
+frontend/node_modules

@@ -1,0 +1,9 @@
+[Unit]
+Description=WebManager: automatic update of patch versions (only if enabled in the dashboard)
+After=docker.service
+Requires=docker.service
+
+[Service]
+Type=oneshot
+ExecStart=@INSTALL_DIR@/scripts/update-helper.sh auto
+TimeoutStartSec=3h

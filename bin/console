@@ -1,0 +1,193 @@
+#!/usr/bin/env php
+<?php
+declare(strict_types=1);
+
+// CLI for installation and maintenance. Runs inside the webmanager container:
+//   docker compose exec -T webmanager php bin/console <command>
+if (PHP_SAPI !== 'cli') {
+    exit(1);
+}
+require dirname(__DIR__) . '/app/bootstrap.php';
+
+use WebManager\Http\Auth;
+use WebManager\Support\Db;
+
+function out(string $m): void
+{
+    fwrite(STDOUT, $m . "\n");
+}
+
+function fail(string $m, int $code = 1): never
+{
+    fwrite(STDERR, $m . "\n");
+    exit($code);
+}
+
+/** Reads a secret from stdin (never from argv, so it cannot leak through the process list). */
+function readSecret(): string
+{
+    $v = stream_get_contents(STDIN);
+    return rtrim((string) $v, "\r\n");
+}
+
+function migrate(): int
+{
+    $pdo = Db::pdo();
+    $pdo->exec('CREATE TABLE IF NOT EXISTS schema_migrations (version VARCHAR(100) NOT NULL PRIMARY KEY, applied_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP) ENGINE=InnoDB');
+    if (!(int) $pdo->query("SELECT GET_LOCK('wm_migrate', 60)")->fetchColumn()) {
+        fail('Could not obtain the migration lock.');
+    }
+    $applied = array_column(Db::all('SELECT version FROM schema_migrations'), 'version');
+    $files = glob(WM_ROOT . '/database/migrations/*.sql') ?: [];
+    sort($files);
+    $count = 0;
+    foreach ($files as $file) {
+        $version = basename($file, '.sql');
+        if (in_array($version, $applied, true)) {
+            continue;
+        }
+        out("Migration $version …");
+        $sql = (string) file_get_contents($file);
+        // DDL statements commit implicitly in MariaDB, so each migration must be idempotent-safe per statement.
+        foreach (array_filter(array_map('trim', preg_split('/;\s*(\r?\n|$)/', $sql) ?: [])) as $stmt) {
+            $clean = trim(preg_replace('/^\s*--.*$/m', '', $stmt) ?? '');
+            if ($clean !== '') {
+                $pdo->exec($clean);
+            }
+        }
+        Db::exec('INSERT INTO schema_migrations (version) VALUES (?)', [$version]);
+        $count++;
+    }
+    $pdo->query("SELECT RELEASE_LOCK('wm_migrate')");
+    out($count ? "$count migration(s) applied." : 'Database is up to date.');
+    return 0;
+}
+
+$cmd = $argv[1] ?? 'help';
+$args = array_slice($argv, 2);
+
+try {
+    switch ($cmd) {
+        case 'migrate':
+            exit(migrate());
+
+        case 'version':
+            out(WM_VERSION);
+            break;
+
+        case 'security:require-2fa':
+            // emergency switch, e.g. when the only administrator lost the authenticator app: off | admins | all
+            $mode = $argv[2] ?? '';
+            if (!in_array($mode, ['off', 'admins', 'all'], true)) {
+                fail('Verwendung: security:require-2fa off|admins|all');
+            }
+            Db::exec("REPLACE INTO settings (k, v) VALUES ('require_2fa', ?)", [$mode]);
+            out("Mandatory 2FA: $mode");
+            break;
+        case 'admin:count':
+            out((string) Db::val('SELECT COUNT(*) FROM users'));
+            break;
+
+        case 'admin:create':
+        case 'admin:reset-password':
+            $email = mb_strtolower(trim($args[0] ?? ''));
+            if (!filter_var($email, FILTER_VALIDATE_EMAIL)) {
+                fail('Usage: console ' . $cmd . ' <email>   (password is read from stdin)');
+            }
+            $pw = readSecret();
+            if ($err = Auth::passwordPolicyError($pw)) {
+                fail($err);
+            }
+            $hash = password_hash($pw, PASSWORD_ARGON2ID);
+            $exists = Db::val('SELECT id FROM users WHERE email = ?', [$email]);
+            if ($cmd === 'admin:create') {
+                if ($exists) {
+                    fail('An administrator with this email already exists.');
+                }
+                // the column default is 'viewer'; the account created here is the administrator
+                Db::exec("INSERT INTO users (email, password_hash, role) VALUES (?, ?, 'admin')", [$email, $hash]);
+                \WebManager\Support\Audit::log('admin.create_cli', $email, [], null);
+                out("Administrator $email created.");
+            } else {
+                if (!$exists) {
+                    fail('No user with this email.');
+                }
+                Db::exec('UPDATE users SET password_hash = ? WHERE id = ?', [$hash, $exists]);
+                \WebManager\Support\Audit::log('admin.reset_password_cli', $email, [], null);
+                out('Password changed.');
+            }
+            break;
+
+        case 'user:list':
+            foreach (Db::all('SELECT u.email, u.role, u.active, u.totp_enabled, (SELECT COUNT(*) FROM user_passkeys p WHERE p.user_id = u.id) AS passkeys, u.last_login_at FROM users u ORDER BY u.id') as $u) {
+                out(sprintf(
+                    '%-40s %-9s %-9s 2FA:%-3s Passkeys:%d  last sign-in: %s',
+                    $u['email'],
+                    $u['role'],
+                    (int) $u['active'] === 1 ? 'active' : 'blocked',
+                    (int) $u['totp_enabled'] === 1 ? 'on' : 'off',
+                    (int) $u['passkeys'],
+                    $u['last_login_at'] ?? 'never'
+                ));
+            }
+            break;
+
+        case 'user:reset-2fa':
+            // break-glass: Authenticator app, recovery codes and passkeys are lost -> the person signs in with the password again
+            $email = mb_strtolower(trim($args[0] ?? ''));
+            $keepPasskeys = in_array('--keep-passkeys', $args, true);
+            $uid = $email === '' ? null : Db::val('SELECT id FROM users WHERE email = ?', [$email]);
+            if (!$uid) {
+                fail('Usage: console user:reset-2fa <email> [--keep-passkeys]   (No user with this email?)');
+            }
+            Db::exec('UPDATE users SET totp_enabled = 0, totp_secret_enc = NULL, totp_last_step = 0 WHERE id = ?', [$uid]);
+            Db::exec('DELETE FROM user_recovery_codes WHERE user_id = ?', [$uid]);
+            if (!$keepPasskeys) {
+                Db::exec('DELETE FROM user_passkeys WHERE user_id = ?', [$uid]);
+            }
+            Db::exec("DELETE FROM login_attempts WHERE email = ?", ['2fa:' . $uid]);
+            \WebManager\Support\Audit::log('admin.reset_2fa_cli', $email, ['passkeys_removed' => !$keepPasskeys], null);
+            out("Second factor of $email reset" . ($keepPasskeys ? ' (passkeys kept).' : ' (authenticator, recovery codes and passkeys removed).'));
+            out('Note: If mandatory 2FA is active, the person has to set it up again after signing in (or first: security:require-2fa off).');
+            break;
+
+        case 'login:unlock':
+            // clears the failed-attempt counters (15-minute lockout) for one address/IP or for everyone
+            $who = trim($args[0] ?? '');
+            if ($who === '') {
+                Db::exec('DELETE FROM login_attempts WHERE success = 0');
+                out('All blocks caused by failed attempts were lifted.');
+            } else {
+                Db::exec('DELETE FROM login_attempts WHERE success = 0 AND (email = ? OR ip = ?)', [mb_strtolower($who), $who]);
+                out("Blocks for $who lifted.");
+            }
+            \WebManager\Support\Audit::log('admin.login_unlock_cli', $who ?: 'all', [], null);
+            break;
+
+        case 'job:enqueue':
+            $type = $args[0] ?? '';
+            $titles = ['system.reconcile' => 'Reconcile websites and proxy', 'certs.renew' => 'Renew certificates', 'images.prepare' => 'Prepare runtime images'];
+            if (!isset($titles[$type])) {
+                fail('Allowed: ' . implode(', ', array_keys($titles)));
+            }
+            $id = Db::insert('INSERT INTO jobs (type, title, payload) VALUES (?, ?, ?)', [$type, $titles[$type], '{}']);
+            out("Task #$id queued.");
+            break;
+
+        case 'job:status':
+            $id = (int) ($args[0] ?? 0);
+            $j = Db::one('SELECT id, type, status, error FROM jobs WHERE id = ?', [$id]);
+            out($j ? json_encode($j, JSON_UNESCAPED_UNICODE) : 'not found');
+            exit($j && $j['status'] === 'succeeded' ? 0 : ($j && in_array($j['status'], ['queued', 'running'], true) ? 2 : 1));
+
+        case 'db:check':
+            Db::val('SELECT 1');
+            out('ok');
+            break;
+
+        default:
+            out("WebManager console\n  migrate | version | db:check\n  Emergency access: user:list | admin:reset-password <email> | user:reset-2fa <email> [--keep-passkeys] | login:unlock [email|ip] | security:require-2fa off|admins|all\n  Weitere: admin:count | admin:create <email> | job:enqueue <type> | job:status <id>");
+    }
+} catch (\Throwable $e) {
+    fail('Error: ' . $e->getMessage());
+}

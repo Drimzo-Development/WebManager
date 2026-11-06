@@ -1,0 +1,8 @@
+# Release archives and Docker contexts are built for Linux: always LF, never CRLF.
+* text=auto eol=lf
+*.sh text eol=lf
+scripts/webmanager text eol=lf
+bin/console text eol=lf
+*.png binary
+*.woff2 binary
+*.tar.gz binary

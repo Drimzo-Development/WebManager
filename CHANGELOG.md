@@ -6,6 +6,9 @@ and is shown in the dashboard under *Updates*.
 
 ## [Unreleased]
 
+### Changed
+- **Node.js 26:** The dashboard, the management agent and the worker now run on Node.js 26 instead of Node.js 24. Websites keep the runtime selected in their settings.
+
 ## [0.1.0]
 
 First public release.

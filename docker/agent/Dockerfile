@@ -1,6 +1,6 @@
 # Privileged management agent: the ONLY component that talks to the Docker daemon.
 # Build context: repository root.
-FROM node:24.22.2-alpine3.24
+FROM node:26.12.1-alpine3.24
 
 # npm/corepack are not needed at runtime (and carry their own dependency CVEs), so they are removed
 RUN apk upgrade --no-cache && apk add --no-cache docker-cli \

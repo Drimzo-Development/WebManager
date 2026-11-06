@@ -41,7 +41,7 @@ export function SiteFields({ idp, type, values: v, set, runtimes, errors, tokenS
   const text = (k: keyof SiteValues, label: string, opts: { hint?: string; placeholder?: string; mono?: boolean; wide?: boolean; password?: boolean } = {}) => (
     <div class={opts.wide ? 'span-2' : undefined}>
       <Field label={label} htmlFor={`${idp}-${k}`} hint={opts.hint}>
-        <input id={`${idp}-${k}`} class={`input${opts.mono ? ' mono' : ''}`} type={opts.password ? 'password' : 'text'} autocomplete="off" spellcheck={false} placeholder={opts.placeholder} value={String(v[k] ?? '')} onInput={(e) => set({ [k]: e.currentTarget.value } as Partial<SiteValues>)} />
+        <input id={`${idp}-${k}`} class={`input${opts.mono ? ' mono' : ''}`} type={(opts.password ? 'password' : 'text') as 'text'} autocomplete="off" spellcheck={false} placeholder={opts.placeholder} value={String(v[k] ?? '')} onInput={(e) => set({ [k]: e.currentTarget.value } as Partial<SiteValues>)} />
       </Field>
       {err(k)}
     </div>

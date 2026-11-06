@@ -1,6 +1,6 @@
 # Job worker. No Docker access: it only talks to the database and the agent API.
 # Build context: repository root.
-FROM node:24.22.2-alpine3.24
+FROM node:26.12.1-alpine3.24
 
 WORKDIR /app
 COPY workers/package.json workers/package-lock.json ./

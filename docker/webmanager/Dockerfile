@@ -2,7 +2,7 @@
 # Build context: repository root.
 
 # Stage 1: new frontend (Preact + TypeScript). The output is plain files, Node is not part of the final image.
-FROM node:26.12.1-alpine3.24 AS ui
+FROM node:26.13.0-alpine3.24 AS ui
 WORKDIR /build/frontend
 COPY frontend/package.json frontend/package-lock.json ./
 RUN npm ci --ignore-scripts

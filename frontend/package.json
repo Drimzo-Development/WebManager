@@ -13,12 +13,12 @@
   "dependencies": {
     "@xterm/addon-fit": "0.11.0",
     "@xterm/xterm": "6.0.0",
-    "preact": "11.1.1"
+    "preact": "11.2.0"
   },
   "devDependencies": {
-    "@babel/core": "7.29.7",
+    "@babel/core": "7.29.13",
     "@preact/preset-vite": "2.10.6",
     "typescript": "7.0.2",
-    "vite": "8.3.5"
+    "vite": "8.3.7"
   }
 }

@@ -11,7 +11,7 @@
   },
   "dependencies": {
     "mysql2": "3.24.6",
-    "nodemailer": "10.3.1"
+    "nodemailer": "10.5.0"
   },
   "engines": {
     "node": ">=20"

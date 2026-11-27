@@ -1,5 +1,5 @@
 # Reverse proxy: terminates ports 80/443 for the dashboard and all managed websites.
-FROM nginx:1.31.8-alpine
+FROM nginx:1.31.9-alpine
 
 RUN apk upgrade --no-cache && rm -f /etc/nginx/conf.d/default.conf
 COPY nginx.conf /etc/nginx/nginx.conf

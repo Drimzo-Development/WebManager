@@ -12,7 +12,7 @@ COPY lang/ /build/lang/
 # writes to /build/public/assets/app and /build/public/assets/console (see vite.config.ts, vite.console.config.ts)
 RUN npm test && npm run build
 
-FROM php:8.5.12-fpm-alpine3.24
+FROM php:8.6.0-fpm-alpine3.24
 
 # opcache is compiled into PHP core since 8.5; no separate extension to install
 RUN apk upgrade --no-cache && apk add --no-cache nginx \
